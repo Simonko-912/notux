@@ -46,6 +46,19 @@ void pmm_init(void *map, uint64_t map_size, uint64_t desc_size) {
     for(uint64_t p=0;p<512;p++) bm_set(p);
 }
 
+/* Mark a physical range as used. The kernel image is larger than the
+ * hard-coded 2 MiB above, so anything living in BSS past that boundary
+ * would otherwise be handed out to the heap and silently overwritten. */
+void pmm_reserve(uint64_t phys, uint64_t size) {
+    if (!size) return;
+    uint64_t first = phys / PAGE_SIZE;
+    uint64_t last  = (phys + size + PAGE_SIZE - 1) / PAGE_SIZE;
+    if (last > PMM_MAX_PAGES) last = PMM_MAX_PAGES;
+    for (uint64_t p = first; p < last; p++) {
+        if (!bm_tst(p)) { bm_set(p); pmm_free--; }
+    }
+}
+
 uint64_t pmm_alloc_page(void){
     for(uint64_t i=0;i<PMM_MAX_PAGES;i++){
         uint64_t p=(pmm_cursor+i)%PMM_MAX_PAGES;

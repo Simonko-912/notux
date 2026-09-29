@@ -46,6 +46,9 @@ void kmain(BootInfo *bi) {
 
     /* 2. PMM */
     pmm_init(bi->mmap.map, bi->mmap.map_size, bi->mmap.desc_size);
+    /* The kernel image outgrew the hard-coded 2 MiB reserved inside
+     * pmm_init; claim the real extent or the heap lands on our BSS. */
+    pmm_reserve(bi->kernel_phys, bi->kernel_size);
 
     /* 3. VMM (identity-mapped for now) */
     vmm_init(bi->kernel_phys, bi->kernel_virt, bi->kernel_size);

@@ -243,7 +243,7 @@ static int write_mft_record(NtfsState *s, uint64_t record_num,
 static int read_mft_record(NtfsState *s, uint64_t record_num,
                             NtfsFileRecord *out) {
     /* Check cache first */
-    if (record_num < s->mft_cache_count) {
+    if (s->mft_cache && record_num < s->mft_cache_count) {
         kmemcpy(out, s->mft_cache + record_num * s->bytes_per_record,
                 s->bytes_per_record);
         return 0;
@@ -1372,9 +1372,9 @@ static int ntfs_mount(const char *device, void **fs_data_out) {
     }
 
     /* Cache first 128 MFT records (covers system files) */
-    s->mft_cache_count = 128;
     s->mft_cache = (uint8_t *)kmalloc(128 * s->bytes_per_record);
     if (s->mft_cache) {
+        s->mft_cache_count = 128;
         /* Limit MFT cache to avoid kmalloc of huge chunk */
         uint32_t cache_size = 128 * s->bytes_per_record;
         if (cache_size <= 256*1024)
