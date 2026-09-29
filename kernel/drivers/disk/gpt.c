@@ -92,7 +92,8 @@ static void scan_drive(int drive_idx) {
     uint32_t num_entries = h->num_partition_entries;
     uint64_t entry_lba   = h->partition_entry_lba;
 
-    if (entry_size < 128 || num_entries > 128) return;
+    if (entry_size != 128 || num_entries == 0 || num_entries > 128) return;
+    if (entry_lba == 0) return;
 
     /* Read partition entries (4 per 512-byte sector at 128 bytes each) */
     uint32_t entries_per_sector = 512 / entry_size;
@@ -135,6 +136,9 @@ static void scan_drive(int drive_idx) {
                 return;
         }
     }
+    /* Keep the count sane even if entries are malformed */
+    if (disk_partition_count > GPT_MAX_PARTITIONS * ATA_MAX_DRIVES)
+        disk_partition_count = GPT_MAX_PARTITIONS * ATA_MAX_DRIVES;
 }
 
 void gpt_scan_all(void) {
