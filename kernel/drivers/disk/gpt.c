@@ -136,9 +136,6 @@ static void scan_drive(int drive_idx) {
                 return;
         }
     }
-    /* Keep the count sane even if entries are malformed */
-    if (disk_partition_count > GPT_MAX_PARTITIONS * ATA_MAX_DRIVES)
-        disk_partition_count = GPT_MAX_PARTITIONS * ATA_MAX_DRIVES;
 }
 
 void gpt_scan_all(void) {
