@@ -61,9 +61,7 @@ static int64_t term_read(void *buf, size_t n) {
 }
 
 int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
-                         uint64_t a3,uint64_t a4,uint64_t a5,
-                         uint64_t rip_in, uint64_t rsp_in){
-    (void)rip_in; (void)rsp_in;
+                         uint64_t a3,uint64_t a4,uint64_t a5){
     (void)a4;
     (void)a5;
     if (nr == SYS_WRITE && g_sys_area.diag_count < 3) {
@@ -79,7 +77,9 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
         if ((int)a1 == 0) return term_read((void*)a2,(size_t)a3);
         return vfs_read((int)a1,(void*)a2,(size_t)a3);
     case SYS_WRITE:
-        if ((int)a2 >= 0 && (int)a2 <= 2) { term_write((const void*)a3,(size_t)a4); return (int64_t)a4; }
+        /* libnotux calls nx_syscall(SYS_WRITE, fd, buf, n):
+         * a1=fd, a2=buf, a3=n. a4/a5 are padding. */
+        if ((int)a1 >= 0 && (int)a1 <= 2) { term_write((const void*)a2,(size_t)a3); return (int64_t)a3; }
         return vfs_write((int)a1,(const void*)a2,(size_t)a3);
     case SYS_OPEN:    return vfs_open_compat((const char*)a1,(int)a2,(int)a3);
     case SYS_CLOSE:   return vfs_close((int)a1);

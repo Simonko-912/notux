@@ -46,7 +46,7 @@ syscall_entry_asm:
     cmp  byte [rel g_user_exit], 0
     jne  .exit_path
 
-    add  rsp, 24
+    add  rsp, 24             ; discard saved nr + two stack args
     pop  r15
     pop  r14
     pop  r13
