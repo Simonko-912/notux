@@ -142,6 +142,17 @@ void vmm_switch(uint64_t *pml4) {
     __asm__ volatile("mov %0, %%cr3" :: "r"(phys) : "memory");
 }
 
+/* Switch to a process address space and keep the kernel reachable from it.
+ * The process PML4 entries for the higher half are copied from the kernel
+ * table, but identity-mapped low memory can change as the heap grows; make
+ * sure the current low half stays mapped before returning to ring 3. */
+void vmm_switch_to_process(uint64_t *pml4) {
+    if (!g_kernel_pml4 || !pml4) return;
+    pml4[0] = g_kernel_pml4[0];
+    vmm_map_low_identity();
+    vmm_switch(pml4);
+}
+
 /* ── Create a new address space ─────────────────────────────── */
 uint64_t *vmm_new_space(void) {
     uint64_t phys = alloc_table();
@@ -157,6 +168,19 @@ uint64_t *vmm_new_space(void) {
             pml4[i] = g_kernel_pml4[i];
     }
     return pml4;
+}
+
+/* Ensure direct physical mappings cover low-address pointers used by
+   early C code, page tables, heap, and the serial MMIO ports. */
+void vmm_map_low_identity(void) {
+    if (!g_kernel_pml4) return;
+    for (uint64_t addr = 0; addr < 0x100000000ULL; addr += 0x200000) {
+        uint64_t *pdpt = ensure_table(g_kernel_pml4, PML4_IDX(addr),
+                                       PTE_RW | PTE_PRESENT | PTE_USER);
+        uint64_t *pd   = ensure_table(pdpt, PDPT_IDX(addr),
+                                       PTE_RW | PTE_PRESENT | PTE_USER);
+        pd[PD_IDX(addr)] = addr | PTE_HUGE | PTE_RW | PTE_PRESENT | PTE_USER;
+    }
 }
 
 /* ── Clone an address space (copy-on-write) ─────────────────── */

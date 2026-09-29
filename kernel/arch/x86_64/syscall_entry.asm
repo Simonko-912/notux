@@ -17,15 +17,13 @@ extern g_user_exit
 
 syscall_entry_asm:
     swapgs
-    mov  [gs:8],  rsp        ; save user rsp
-    mov  [gs:16], rcx        ; save user RIP for the return path
-    mov  [gs:24], r11        ; save user flags for the return path
-    mov  rsp,     [gs:0]     ; switch to kernel stack
+    mov  qword [gs:8], rsp   ; save user rsp directly in gs slot
+    mov  qword [gs:16], rcx  ; save user RIP for the return path
+    mov  qword [gs:24], r10  ; save a4
+    mov  qword [gs:32], r8   ; save a5
+    mov  qword [gs:40], r9   ; save a6
+    mov  rsp, qword [gs:0]   ; switch to kernel stack
 
-    ; On some QEMU/OVMF configurations SYSRET can return with unexpected
-    ; selector state. Use an explicit IRET frame for the ring-3 return path.
-    push r11                 ; saved rflags
-    push rcx                 ; saved rip
     push rbp
     push rbx
     push r12
@@ -37,12 +35,11 @@ syscall_entry_asm:
     ; Args for syscall_handler(nr, a1, a2, a3, a4, a5):
     ;   user regs: rax=nr rdi=a1 rsi=a2 rdx=a3 r10=a4 r8=a5
     ;   SysV:      rdi     rsi     rdx     rcx  r8   r9
-    mov  rcx, r10
-    mov  r8,  r8             ; keep syscall a5 in r8
-    xor  r9d, r9d            ; a6 is unused by libnotux nx_syscall wrapper
+    mov  rcx, [gs:24]        ; a4
+    mov  r8,  [gs:32]        ; a5
+    mov  r9,  [gs:40]        ; a6
     push qword [gs:8]        ; stack arg 8: saved user rsp
-    mov  [gs:32], rcx        ; keep RIP in scratch area
-    push qword [gs:32]       ; stack arg 7: saved RIP after SYSCALL
+    push qword [gs:16]       ; stack arg 7: saved RIP after SYSCALL
 
     call syscall_handler     ; result in rax
 
@@ -56,18 +53,21 @@ syscall_entry_asm:
     pop  r12
     pop  rbx
     pop  rbp
-    pop  rcx
-    pop  r11
-    ; Build a clean ring-3 IRET frame directly below the saved user RSP.
+    ; Return via IRET with explicit ring-3 selectors because this environment
+    ; does not preserve the expected SYSRET selector state reliably.
     mov  rdx, [gs:8]         ; user RSP
     mov  rcx, [gs:16]        ; user RIP
     mov  rsp, rdx
-    mov  rbp, rsp            ; mark return frame top before pushing IRET frame
     push qword 0x23          ; SS
     push rdx                 ; RSP
-    push qword [gs:24]       ; RFLAGS
+    push qword r11           ; RFLAGS from SYSCALL
     push qword 0x1B          ; CS
-    push qword [gs:16]       ; RIP
+    push rcx                 ; RIP
+    swapgs
+    iretq
+
+.old_return_path:
+    add  rsp, 8              ; discard saved syscall nr
     swapgs
     iretq
 

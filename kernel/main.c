@@ -49,6 +49,7 @@ void kmain(BootInfo *bi) {
 
     /* 3. VMM (identity-mapped for now) */
     vmm_init(bi->kernel_phys, bi->kernel_virt, bi->kernel_size);
+    vmm_map_low_identity();
 
     /* 4. Heap */
     kheap_init();

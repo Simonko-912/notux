@@ -113,6 +113,8 @@ void isr_dispatch(CpuState *s) {
             num_to_str(s->ss, d, 16); kser_puts(d);
             kser_puts(" rflags=0x");
             num_to_str(s->rflags, d, 16); kser_puts(d);
+            kser_puts(" err=0x");
+            num_to_str(s->error_code, d, 16); kser_puts(d);
             kser_puts(" killing ");
             kser_puts(current_proc->name); kser_puts("\n");
             proc_kill(current_proc, SIGILL);

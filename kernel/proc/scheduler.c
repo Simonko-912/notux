@@ -140,7 +140,7 @@ void sched_tick(CpuState *state) {
 
     /* Switch page tables if process has its own address space */
     if (current_proc->page_table)
-        vmm_switch(current_proc->page_table);
+        vmm_switch_to_process(current_proc->page_table);
 
     /* Restore context — iretq will pop the saved frame */
     *state = current_proc->ctx;

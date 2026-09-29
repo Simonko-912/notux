@@ -10,6 +10,7 @@
 #include "../../drivers/net/tcp.h"
 #include "../../kernel.h"
 #include "../../fs/pathconv.h"
+#include "../../kserial.h"
 #include "../../../libnotux/include/notux/syscalls.h"
 #include <stdint.h>
 
@@ -60,12 +61,17 @@ static int64_t term_read(void *buf, size_t n) {
 }
 
 int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
-                         uint64_t a3,uint64_t a4,uint64_t a5){
-    (void)a4;(void)a5;
+                         uint64_t a3,uint64_t a4,uint64_t a5,
+                         uint64_t rip_in, uint64_t rsp_in){
+    (void)rip_in; (void)rsp_in;
+    (void)a4;
+    (void)a5;
     if (nr == SYS_WRITE && g_sys_area.diag_count < 3) {
         char d[24];
         g_sys_area.diag_count++;
-        kser_puts("sc: nr=1 rsp=0x"); num_to_str(a5, d, 16); kser_puts(d);
+        kser_puts("sc: nr=1 a1=0x"); num_to_str(a1, d, 16); kser_puts(d);
+        kser_puts(" a2=0x"); num_to_str(a2, d, 16); kser_puts(d);
+        kser_puts(" a3=0x"); num_to_str(a3, d, 16); kser_puts(d);
         kser_puts("\n");
     }
     switch(nr){
@@ -73,7 +79,7 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
         if ((int)a1 == 0) return term_read((void*)a2,(size_t)a3);
         return vfs_read((int)a1,(void*)a2,(size_t)a3);
     case SYS_WRITE:
-        if ((int)a1 >= 0 && (int)a1 <= 2) { term_write((const void*)a2,(size_t)a3); return (int64_t)a3; }
+        if ((int)a2 >= 0 && (int)a2 <= 2) { term_write((const void*)a3,(size_t)a4); return (int64_t)a4; }
         return vfs_write((int)a1,(const void*)a2,(size_t)a3);
     case SYS_OPEN:    return vfs_open_compat((const char*)a1,(int)a2,(int)a3);
     case SYS_CLOSE:   return vfs_close((int)a1);
@@ -171,4 +177,16 @@ void syscall_init(void){
     wrmsr(MSR_KERNEL_GS_BASE, (uint64_t)(uintptr_t)&g_sys_area);
     g_sys_area.kernel_stack = 0;
     g_user_exit = 0;
+
+    /* Ensure the active kernel stack is visible to swapgs from ring 3. */
+    syscall_set_kernel_stack((uint64_t)(uintptr_t)&g_sys_area + sizeof(g_sys_area));
+    kser_puts("syscall: LSTAR=0x");
+    char d[24];
+    num_to_str(rdmsr(MSR_LSTAR), d, 16); kser_puts(d);
+    kser_puts(" GS=0x");
+    num_to_str(rdmsr(MSR_KERNEL_GS_BASE), d, 16); kser_puts(d);
+    kser_puts("\n");
+    __asm__ volatile("swapgs" ::: "memory");
+    num_to_str(rdmsr(MSR_GS_BASE), d, 16); kser_puts("after swap GS_BASE=0x"); kser_puts(d); kser_puts("\n");
+    __asm__ volatile("swapgs" ::: "memory");
 }
