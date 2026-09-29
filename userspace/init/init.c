@@ -14,12 +14,14 @@ int main(int argc, char **argv, char **envp) {
         nx_puts("init: failed to start nsh\n");
         for (;;) nx_sleep(1000);
     }
+    nx_puts("init: shell started, watching for exits.\n");
 
     for (;;) {
         int status;
         nx_pid_t child = nx_wait(&status);
         if (child >= 0) {
-            nx_puts("init: reaped child\n");
+            nx_puts("init: shell exited, restarting.\n");
+            nx_exec("#/bin/nsh", nsh_argv, NULL);
         } else {
             nx_sleep(50);
         }

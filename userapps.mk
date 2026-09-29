@@ -4,7 +4,7 @@
 .PHONY: build-user-apps install-user-apps clean-user-apps
 
 # User application directories
-USER_APPS := hello init testapp calc filemgr editor shell ps meminfo nfetch notedit pkgman opm gcc_wrapper
+USER_APPS := hello init testapp calc filemgr editor shell ps meminfo nfetch notedit pkgman opm gcc_wrapper date echo head wc tree sysinfo
 BIN_DIR := build/bin
 
 # Build all user applications

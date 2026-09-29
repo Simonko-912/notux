@@ -8,7 +8,7 @@ echo "Building Notux OS applications..."
 mkdir -p build/bin
 
 # Build all applications
-APPS=("hello" "init" "testapp" "calc" "filemgr" "editor" "shell" "ps" "meminfo" "nfetch" "notedit" "pkgman" "opm" "gcc_wrapper")
+APPS=("hello" "init" "testapp" "calc" "filemgr" "editor" "shell" "ps" "meminfo" "nfetch" "notedit" "pkgman" "opm" "gcc_wrapper" "date" "echo" "head" "wc" "tree" "sysinfo")
 
 for app in "${APPS[@]}"; do
     cd userspace/$app
