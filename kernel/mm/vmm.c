@@ -263,7 +263,7 @@ void vmm_init(uint64_t kernel_phys, uint64_t kernel_virt, uint64_t kernel_size) 
     /* Map kernel to higher half */
     uint64_t pages = (kernel_size + PAGE_SIZE - 1) / PAGE_SIZE;
     vmm_map_range(g_kernel_pml4, kernel_virt, kernel_phys,
-                  pages, VMM_FLAG_RW);
+                  pages, VMM_FLAG_RW | VMM_FLAG_USER);
 
     /* Load the new page tables */
     vmm_switch(g_kernel_pml4);

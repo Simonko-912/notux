@@ -62,7 +62,7 @@ static int64_t term_read(void *buf, size_t n) {
 int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
                          uint64_t a3,uint64_t a4,uint64_t a5){
     (void)a4;(void)a5;
-    if (nr == SYS_WRITE && g_sys_area.diag_count < 8) {
+    if (nr == SYS_WRITE && g_sys_area.diag_count < 3) {
         char d[24];
         g_sys_area.diag_count++;
         kser_puts("sc: nr=1 rsp=0x"); num_to_str(a5, d, 16); kser_puts(d);

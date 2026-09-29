@@ -12,6 +12,9 @@ int64_t syscall_handler(uint64_t nr, uint64_t a1, uint64_t a2,
 typedef struct {
     uint64_t kernel_stack;
     uint64_t user_rsp_scratch;
+    uint64_t user_rip_scratch;
+    uint64_t kernel_rsp_scratch;
+    uint64_t rip_copy;
     uint64_t diag_count;
 } SysArea;
 
