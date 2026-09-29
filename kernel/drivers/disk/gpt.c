@@ -54,6 +54,11 @@ static const uint8_t esp_type_guid[16] = {
     0x28,0x73,0x2A,0xC1, 0x1F,0xF8, 0xD2,0x11,
     0xBA,0x4B,0x00,0xA0,0xC9,0x3E,0xC9,0x3B
 };
+static const uint8_t ms_basic_data_guid[16] = {
+    /* Basic Data (Microsoft): EB_D0_A0_A2-B9_E5-33_44-87_C0-68_B6_B7_26_99_C7 */
+    0xA2,0xA0,0xD0,0xEB, 0xE5,0xB9, 0x33,0x44,
+    0x87,0xC0,0x68,0xB6,0xB7,0x26,0x99,0xC7
+};
 
 static int guid_eq(const uint8_t *a, const uint8_t *b) {
     for (int i = 0; i < 16; i++) if (a[i] != b[i]) return 0;
@@ -115,6 +120,7 @@ static void scan_drive(int drive_idx) {
             /* Accept Windows Basic Data, Linux filesystem, or any non-ESP data partition
                (actual NTFS detection is done by reading the boot sector signature) */
             p->is_ntfs       = guid_eq(ent->type_guid, ntfs_type_guid)
+                             || guid_eq(ent->type_guid, ms_basic_data_guid)
                              || guid_eq(ent->type_guid, linux_data_guid)
                              || (!guid_eq(ent->type_guid, esp_type_guid)
                                  && !guid_eq(ent->type_guid, ms_reserved_guid));
