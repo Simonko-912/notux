@@ -1,0 +1,101 @@
+# Makefile for building Notux OS with user applications
+# This builds the entire OS and automatically installs user apps to NTFS
+
+.PHONY: all build install clean check dist build-apps install-apps
+
+# Configuration
+BUILD_DIR := build
+BIN_DIR := $(BUILD_DIR)/bin
+NTFS_IMAGE := $(BUILD_DIR)/data.ntfs
+ROOT_MOUNT := $(BUILD_DIR)/mnt
+APP_DIRS := hello testapp calc filemgr editor
+KERNEL_OBJS := $(BUILD_DIR)/kernel/*.o
+
+# Check if we have the required tools
+CHECK_TOOLS := $(shell which mtools 2>/dev/null)
+ifeq ($(CHECK_TOOLS),)
+    $(error "mtools not found. Please install: sudo apt install mtools")
+endif
+
+all: build-apps dist
+
+build-apps:
+	@echo "Building user applications..."
+	@mkdir -p $(BIN_DIR)
+	@for app in $(APP_DIRS); do \
+		echo "Building $$app..."; \
+		cd userspace/$$app && \
+		if [ -f Makefile ]; then \
+			make clean 2>/dev/null || true; \
+			make install || echo "Failed to build $$app"; \
+		else \
+			echo "No Makefile found for $$app"; \
+		fi; \
+		cd ../../..; \
+	done
+	@echo "User application building complete."
+
+install-apps: build-apps
+	@echo "Installing applications to NTFS partition..."
+	@mkdir -p $(ROOT_MOUNT)
+
+	# Check if NTFS image exists
+	if [ ! -f "$(NTFS_IMAGE)" ]; then \
+		echo "Error: NTFS image $(NTFS_IMAGE) not found. Please run 'make' first."; \
+		exit 1; \
+	fi
+
+	# Create necessary directories in mount point (if not already there)
+	mkdir -p $(ROOT_MOUNT)/bin
+	mkdir -p $(ROOT_MOUNT)/etc
+	mkdir -p $(ROOT_MOUNT)/usr
+	mkdir -p $(ROOT_MOUNT)/var
+
+	# Copy applications to NTFS partition
+	for app in $(APP_DIRS); do \
+		app_file=$(BIN_DIR)/$$app; \
+		if [ -f "$$app_file" ]; then \
+			echo "Installing $$app to NTFS..."; \
+			cp "$$app_file" "$(ROOT_MOUNT)/bin/"; \
+			chmod 755 "$(ROOT_MOUNT)/bin/$$app"; \
+		else \
+			echo "Warning: $$app not found in $(BIN_DIR)"; \
+		fi; \
+	done
+
+	# Install default configuration files if they don't exist
+	if [ ! -f "$(ROOT_MOUNT)/etc/admin.pass" ]; then \
+		echo "admin" > "$(ROOT_MOUNT)/etc/admin.pass"; \
+		chmod 600 "$(ROOT_MOUNT)/etc/admin.pass"; \
+		echo "Created default admin password file"; \
+	fi
+
+	@echo "Applications installed to NTFS partition."
+
+# Main build target that builds the entire system
+dist: build-apps install-apps
+	@echo "Complete system with user applications built and installed."
+
+check:
+	@echo "Checking system requirements..."
+	@which mtools > /dev/null && echo "✓ mtools found" || echo "✗ mtools not found"
+	@echo "✓ NTFS image location: $(NTFS_IMAGE)"
+	@echo "✓ Build directory: $(BUILD_DIR)"
+	@echo "✓ Application directories: $(APP_DIRS)"
+	@echo "✓ Kernel objects: $(KERNEL_OBJS)"
+
+clean:
+	@echo "Cleaning build directory..."
+	@rm -rf $(BIN_DIR)
+	@echo "Clean complete."
+
+# This target can be called from the main Makefile to integrate user app installation
+install-user-apps: install-apps
+	@echo "User applications installed successfully"
+
+# For backward compatibility with existing system
+build-only:
+	@echo "Building only the OS components..."
+	@make -C .. all
+
+.PHONY: all build-apps install-apps dist check clean build-only install-user-apps

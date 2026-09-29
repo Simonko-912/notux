@@ -1,0 +1,88 @@
+# Makefile snippet for building and installing user applications
+# This can be included in the main Makefile
+
+.PHONY: build-user-apps install-user-apps clean-user-apps
+
+# User application directories
+USER_APPS := hello testapp calc filemgr editor
+BIN_DIR := build/bin
+
+# Build all user applications
+build-user-apps:
+	@echo "Building user applications..."
+	@mkdir -p $(BIN_DIR)
+	@for app in $(USER_APPS); do \
+		echo "Building $$app..."; \
+		cd userspace/$$app && \
+		if [ -f Makefile ]; then \
+			make clean 2>/dev/null || true; \
+			make install || echo "Failed to build $$app"; \
+		else \
+			echo "No Makefile found for $$app"; \
+		fi; \
+		cd ../../..; \
+	done
+	@echo "User application building complete."
+
+# Install user applications to NTFS partition
+install-user-apps: build-user-apps
+	@echo "Installing applications to NTFS partition..."
+	@if [ ! -f "build/data.ntfs" ]; then \
+		echo "Error: NTFS image not found. Please run 'make' first."; \
+		exit 1; \
+	fi
+
+	# Create mount point if it doesn't exist
+	@mkdir -p build/mnt
+
+	# Check if already mounted
+	if mountpoint -d build/mnt >/dev/null 2>&1; then \
+		echo "NTFS partition already mounted, unmounting..."; \
+		umount build/mnt || true; \
+	fi
+
+	# Mount the NTFS partition (try read-only first)
+	if mount -o loop,ro build/data.ntfs build/mnt 2>/dev/null; then \
+		echo "Mounted NTFS partition (read-only)"; \
+	elif mount -o loop build/data.ntfs build/mnt; then \
+		echo "Mounted NTFS partition"; \
+	else \
+		echo "Failed to mount NTFS partition"; \
+		exit 1; \
+	fi
+
+	# Create necessary directories
+	@mkdir -p build/mnt/bin
+	@mkdir -p build/mnt/etc
+	@mkdir -p build/mnt/usr
+	@mkdir -p build/mnt/var
+
+	# Copy applications
+	for app in $(USER_APPS); do \
+		app_file=$(BIN_DIR)/$$app; \
+		if [ -f "$$app_file" ]; then \
+			echo "Installing $$app..."; \
+			cp "$$app_file" "build/mnt/bin/"; \
+			chmod 755 "build/mnt/bin/$$app"; \
+		else \
+			echo "Warning: $$app not found in $(BIN_DIR)"; \
+		fi; \
+	done
+
+	# Install default configuration if needed
+	if [ ! -f "build/mnt/etc/admin.pass" ]; then \
+		echo "admin" > "build/mnt/etc/admin.pass"; \
+		chmod 600 "build/mnt/etc/admin.pass"; \
+		echo "Created default admin password file"; \
+	fi
+
+	# Unmount
+	umount build/mnt
+	@echo "Applications installed to NTFS partition."
+
+clean-user-apps:
+	@echo "Cleaning user application build directory..."
+	@rm -rf $(BIN_DIR)
+	@echo "User applications clean complete."
+
+.PHONY: build-user-apps install-user-apps clean-user-apps

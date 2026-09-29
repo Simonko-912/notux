@@ -1,0 +1,204 @@
+Make a operating system, Yes a operating system thats 64 bit and support UEFI, I will presonaly make a font, a example of a few characters as a .h file in paste, and first things first i would want to:
+Start Bootloader
+Start Kernel
+Kernel will manage processes (shell is a process for example) and give them ram and oom those who use too much, and we will start and use the disk with ntfs 
+Kernel will go from normal text mode to gui mode (aka now we dont use sys font and can do what we want)
+Now we will use our font for the shell, smth like "user@#/usr/user/home > " # will be the root dir, you cant get out of it to "" since its root, #/usr is the user directory with users. Instead of full home maybe lets show "user@#/~ > ", the first thing was a example, this will show only for the logged in users home when their there, when a user will be looking at other users dir, it will show up normaly.
+What commands i want: "cd, dir, ping, usr (command to set up users), sudo (runs command after as user admin), bash (command for bash), services (set up background services), touch, mkdir, edit (edit files), mv, unzip", these are basic, also users can only modify things in their folder but can read other. The user admin can edit all, so when runing with sudo, you run as admin, what requires a password (deafult will be "admin" but will be changable by "sudo usr newpass admin" or something simular). I also want this bash compatible and .sh files be executable by bash. I would also want commands: "pkgman (install and set up packages from a zip, and be able to run or compile and run them), gcc (a hard one, the core to build apps here), opm (online package manager, installs from a list of repos any package you want (a deafult will be https://github.com/Simonko-912/notux-packages and the user can add more repos, (normal sites and github))), color (sets individual colors of characters, the background and etc)." we also want programs we compile to be able to use the notux built in libary for calculating, fs, command output, change collors of chars and background, and etc. The os is called Notux (looks like linux, but not simular in the kernal )
+
+Now double check all, and i will call the font just sysfont.h and check yourself if this thing even compiles and double check and fix again
+Ran 6 commands
+
+Good. Let me now systematically create ALL missing headers and fix ALL source files:
+Ran 4 commands
+
+continue
+Ran 4 commands
+
+Now fix the boot_info.h — it includes efi.h but uses the wrong MemoryMapInfo field names:
+Rewrite boot_info.h without efi.h dependency so kernel can include it cleanly
+
+Now fix the syscall.h — it had a bad relative path:
+Fix syscall.h include path
+
+Now create the font wrapper for sysfont.h and a stub sysfont.h for compilation testing:
+Ran 2 commands
+
+Now rewrite all the .c files that have broken includes/references. Let's go file by file:
+Ran 25 commands
+
+continue
+Ran 2 commands
+
+Every kernel C file compiles clean. Now the ASM files:
+Ran 7 commands
+
+Now compile all userspace programs:
+Ran 6 commands
+
+Every single file compiles clean. Now update the Makefile to match all the fixed file paths:
+Write updated Makefile matching all fixed file paths
+
+Now package everything and deliver:
+Ran 2 commands, read a file
+
+All 27 source files compile with zero errors. Here's a full summary of every fix made:
+What was fixed
+
+Missing headers created (18 new files):
+
+    kernel/kernel.h — central kernel types, kmalloc/kfree/kstr* declarations, current_proc
+    kernel/mm/pmm.h, vmm.h, heap.h, oom.h
+    kernel/proc/process.h, scheduler.h
+    kernel/arch/x86_64/gdt.h, idt.h, isr.h, syscall.h
+    kernel/drivers/gfx/framebuffer.h, gui.h, font.h
+    kernel/drivers/input/ps2.h, drivers/net/nic.h, tcp.h
+    kernel/ipc/ipc.h, svc/services.h, fs/ntfs/ntfs.h
+    libnotux/include/notux/fs.h, net.h, color.h, terminal.h, proc.h
+    boot/elf_loader.h, boot/mem.h
+
+Code bugs fixed:
+
+    boot_info.h — removed efi.h dependency (kernel can't include EFI types)
+    efi.h — rewritten with all UINT64/UINT32 typedefs declared before use
+    framebuffer.h — removed duplicate FramebufferInfo definition (already in boot_info.h)
+    vfs.h/vfs.c — fixed VfsMount struct visibility for VfsDir; removed duplicate typedef
+    pmm.c — renamed internal pmm_free_pages variable (clashed with pmm_free_pages() function)
+    isr.c — removed wrong framebuffer.h include causing type conflict; added signal defines inline
+    scheduler.c — replaced framebuffer.h with font.h; added SIGKILL define
+    syscall.c — moved naked ASM to syscall_entry.asm; fixed all SYS_* include path
+    kernel/main.c — moved _start naked ASM to entry.asm
+    process.c — removed local kstrncpy that conflicted with kernel.h declaration
+    notedit.c — removed unused len variable
+    notux_gcc.c — replaced undefined GCC_VERSION macro with literal string
+    terminal.h — fixed term_readline return type mismatch
+
+New ASM files created:
+
+    kernel/arch/x86_64/entry.asm — clean _start with proper stack setup
+    kernel/arch/x86_64/syscall_entry.asm — SYSCALL/SYSRET trampoline
+    kernel/drivers/gfx/fonts/sysfont.c — your sysfont.h font wrapper
+
+To add your real font: just replace kernel/drivers/gfx/fonts/sysfont.h with your generated file. Everything else is already wired up.
+Notux os clean.tar
+GZ 
+
+It took me 4h to fixissue with compiling, and now atleast 2h, i cant boot the iso, img, or even raw efi, 
+BdsDxe: failed to load Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0): Not Found
+>>Start PXE over IPv4.
+
+same with cd, disk, raw efi... EFI i checked using file is aparently a efi file but maybe linker or compiler is having issues... I wasnt able to boot it ever.
+
+Let me look at what's actually in your tar and diagnose the real boot issues.
+Extract and list uploaded tar
+
+it alredy has the entire folder, doesnt have notux dir, and continue
+Ran 22 commands
+
+It boots. The EFI app runs. Now we have the exact working recipe. Let me now fix the entire project to use this proven approach:
+Ran 5 commands
+
+Every source compiles. Now do the full end-to-end build and boot test:
+Ran 6 commands
+
+The bootloader runs. BdsDxe: starting and Notux bootloader starting are printing. The GP fault at 0xAFAFAFAFAFAFAFAF is the classic "jumped to uninitialized memory" — it happens because open_esp_file opened notux.elf OK but we're jumping to an address that is 0xAFAF... which is the UEFI uninitialized memory pattern. The ELF loader jumped to a wrong entry point. Let me fix it:
+Ran 4 commands
+
+Great, continue, and then send me when its done and tell me how to compile run and etc.
+Diagnosed build failures and strategized systematic fixes
+
+BSS is now 163KB instead of 16MB. Now fix the linker script RWX warning and rebuild the full image:
+Ran 19 commands
+
+Continue, also did you check the makefile and other stuff in case too? thanks
+Investigated header structure and file configurations
+
+All offsets are correct. Now do the full rebuild and final boot test:
+Ran 8 commands
+
+The bootloader fully works. It finds GOP, reads the kernel ELF, loads it at 0x100000, exits boot services, and jumps. Now let's fix the Makefile properly, check it handles the whole build, and package everything:
+Ran 4 commands
+
+The bootloader is fully working end to end via make. Now package everything up cleanly:
+Ran 2 commands, read a file
+What was fixed this session
+
+Root cause of all boot failures: three compounding bugs.
+
+Bug 1 — Wrong disk image format.
+UEFI firmware won't boot a raw FAT image or a raw ELF. It needs a GPT partition table with an EFI System Partition (FAT32) embedded at offset 1 MiB. The old Makefile produced neither. Fixed by: parted to create GPT, mkfs.fat + mmd/mcopy to build the ESP, then dd to embed it.
+
+Bug 2 — Wrong EFI struct offsets (EFI_TABLE_HEADER was 40 bytes, not 24).
+The CRC32 and Reserved fields were declared as UINT64 instead of UINT32. This shifted every function pointer in EFI_BOOT_SERVICES by 16 bytes, so LocateProtocol pointed at garbage (0xAFAFAFAF = UEFI uninitialised pool memory), causing the instant GP fault. Fixed by correcting the struct: Sig(8)+Rev(4)+HdrSz(4)+CRC(4)+Rsvd(4) = 24.
+
+Bug 3 — GUIDs as local variables with clang Windows ABI.
+Compound-literal GUID initializers on the stack were mishandled by clang -target x86_64-unknown-windows. Fixed by making all GUIDs static const at file scope.
+
+Bug 4 — PMM bitmap was 16 MiB in BSS.
+The original PMM supported 512 GiB which requires a 16 MiB static bitmap — that blew out the kernel ELF's virtual size and caused mcopy to fail silently. Fixed by capping at 4 GiB (128 KB bitmap) for now.
+How to build and run
+bash
+
+# 1. Install dependencies (Ubuntu/Debian)
+sudo apt install gcc clang lld nasm parted mtools dosfstools qemu-system-x86 ovmf
+
+# 2. Build everything
+make
+
+# 3. Run in QEMU (window + serial on terminal)
+make run
+
+# 4. Or headless — serial output saved to build/serial.log
+make run-log
+
+# 5. Flash to USB for real hardware
+sudo dd if=build/notux.img of=/dev/sdX bs=4M status=progress && sync
+# Then boot the USB with Secure Boot OFF in UEFI settings
+
+Adding your font
+
+Just drop your sysfont.h into kernel/drivers/gfx/fonts/sysfont.h and run make. The wrapper file sysfont.c handles everything automatically — no other changes needed.
+What's confirmed working
+
+    ✅ UEFI PE32+ bootloader compiles and boots (verified in QEMU)
+    ✅ GPT+ESP disk image builds and UEFI recognises it
+    ✅ Bootloader finds GOP framebuffer, reads notux.elf, loads all PT_LOAD segments, exits boot services, jumps to kernel entry
+    ✅ All 15 kernel C files + 3 ASM files compile clean with zero errors
+    ✅ make check, make all, make run-log all work from a clean directory
+
+Notux os final.tar
+GZ 
+
+What i did: Fix thing where u got stuck on bootloader, fonts work and work with color too.
+Current issue: Stuck at starting init process
+
+dsDxe: loading Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
+BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
+=== NOTUX BOOTLOADER ===
+Notux
+Getting GOP...
+FB: 0x0000000080000000 0x0000000000000500x0x0000000000000320
+Reading notux.elf...
+file size: 0x0000000000028110
+Loading ELF segments...
+ELF entry=0x0000000000100000
+  PT_LOAD 0x0000000000100000 pages=0x0000000000000031
+loaded kernel phys=0x0000000000100000
+ExitBootServices...
+JMP>
+(text after jmp is now on screen only)
+
+notux2.tar.gz has a folder called notux2 where the edited things are
+
+please continue, fix and implement things
+Examined archive and diagnosed boot initialization failure
+
+Continue, and main thing is that ntfs doesnt load, maybe make another partition, and then it will instead of dev/sda check all avaiable ntfs partitions on all devices, and if it doesnt find a config file, it will ask if to use this partition for the root of the os, and then when the os starts later, when it will scan all ntfs partitions, it will just look for that file on those partitions, and if it doesnt find it, it will ask to pick what partition and show some files / folders on that partition to confirm if its the correct disk and etc.., and if it doesnt find any files on that from notux, it will copy all the user programs, and etc to it as a template (basicly like a install)
+Reconstructed flattened project structure from available files
+
+again? you remaking? looks like all the progress across like 20 DAYS is lost but heres the tar of the newest working i have (theres a folder called notux4 inside of it with it)
+Extracted latest working version from uploaded archive
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
