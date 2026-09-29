@@ -3,8 +3,7 @@
 /* syscall numbers are defined in notux/syscalls.h, included via -I flags */
 void    syscall_init(void);
 int64_t syscall_handler(uint64_t nr, uint64_t a1, uint64_t a2,
-                        uint64_t a3, uint64_t a4, uint64_t a5,
-                        uint64_t rip_in, uint64_t rsp_in);
+                        uint64_t a3, uint64_t a4, uint64_t a5);
 
 /* Per-CPU area used by the SYSCALL trampoline via swapgs.
  * KERNEL_GS_BASE points here so that:

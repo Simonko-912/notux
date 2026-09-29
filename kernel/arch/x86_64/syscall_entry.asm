@@ -38,15 +38,13 @@ syscall_entry_asm:
     mov  rcx, [gs:24]        ; a4
     mov  r8,  [gs:32]        ; a5
     mov  r9,  [gs:40]        ; a6
-    push qword [gs:8]        ; stack arg 8: saved user rsp
-    push qword [gs:16]       ; stack arg 7: saved RIP after SYSCALL
 
     call syscall_handler     ; result in rax
 
     cmp  byte [rel g_user_exit], 0
     jne  .exit_path
 
-    add  rsp, 24             ; discard saved nr + two stack args
+    add  rsp, 8              ; discard saved syscall nr
     pop  r15
     pop  r14
     pop  r13
