@@ -25,7 +25,7 @@
 #include <stdint.h>
 
 #define MAX_PROCESSES       256
-#define DEFAULT_TIMESLICE   10       /* timer ticks per slice   */
+#define DEFAULT_TIMESLICE   100      /* timer ticks per slice (~1 s at 100 Hz) */
 #define OOM_THRESHOLD_PAGES 512      /* ~2 MiB free triggers OOM */
 #define KSTACK_BYTES        (16 * 4096)
 
@@ -229,14 +229,17 @@ static void sched_reschedule(CpuState *state) {
     /* Save current process context */
     if (current_proc && current_proc->state == PROC_RUNNING) {
         if (state) {
+            /* Keep the stack pointers from the last ring-3 snapshot: a
+             * ring-0 shaped frame (three words) carries no meaningful
+             * rsp/ss, and zeroing them strands the task on a null stack
+             * at its next resume — the push-at-minus-eight fault. */
+            uint64_t ursp = current_proc->ctx.rsp;
+            uint64_t uss  = current_proc->ctx.ss;
             current_proc->ctx = *state;  /* CpuState is the IRQ frame */
             current_proc->ctx.rflags &= ~(1ULL << 8); /* never leak TF */
             if ((fromcs & 3) == 0) {
-                /* A ring-0 frame has no RSP/SS; what we just read there
-                 * is whatever the interrupted function had below it.  Do
-                 * not let a stray value masquerade as a stack pointer. */
-                current_proc->ctx.rsp = 0;
-                current_proc->ctx.ss  = 0;
+                current_proc->ctx.rsp = ursp;
+                current_proc->ctx.ss  = uss;
             }
         }
         current_proc->state = PROC_READY;
@@ -267,6 +270,14 @@ static void sched_reschedule(CpuState *state) {
         bad_ctx_diag(next, state ? state->rip : 0);
         return;
     }
+    {
+        char dm[24];
+        kser_puts("[sch] -> pid "); num_to_str(next->pid, dm, 10); kser_puts(dm);
+        kser_puts(" rip=0x"); num_to_str(next->ctx.rip, dm, 16); kser_puts(dm);
+        kser_puts(" rsp=0x"); num_to_str(next->ctx.rsp, dm, 16); kser_puts(dm);
+        kser_puts(" via "); kser_puts(state ? "frame" : "fresh");
+        kser_puts("\n");
+    }
 
     /* Nothing to iretq back into when the kernel re-entered us, and a
      * switch in which the target's privilege differs from the interrupted
@@ -275,7 +286,14 @@ static void sched_reschedule(CpuState *state) {
      * and patching e.g. a ring-3 frame with a ring-0 target's rip/cs
      * leaves an iretq that pops an RSP/SS the ring-0 target never had.
      * enter_process builds a whole fresh frame instead. */
-    if (!state || ((fromcs & 3) != (next->ctx.cs & 3)))
+    /* Same reasoning covers a switch to another process: the hardware
+     * frame the stub is about to iretq out of belongs to the interrupted
+     * task — its rsp/ss describe that task's stack.  Dressing that frame
+     * up for whoever we picked next resumes the new task against stack
+     * state it never owned, so every cross-task hop goes through
+     * enter_process, which lays down a complete frame of its own. */
+    if (!state || next != current_proc ||
+        ((fromcs & 3) != (next->ctx.cs & 3)))
         enter_process(next);                    /* never returns */
 
     current_proc        = next;
@@ -379,12 +397,12 @@ void sched_idle(void) {
 /* ── Yield (voluntary context switch) ───────────────────────── */
 void sched_yield(void) {
     slice_remaining = 0;
-    /* Re-enter the scheduler directly rather than through `int $0x20`.
-     * That re-ran the whole IRQ stub on the caller's stack and then sent
-     * a spurious EOI for an interrupt the PIC never raised; worse, a
-     * yield from a syscall has no CPU frame to hand back.  With a NULL
-     * frame the scheduler knows to switch only, never to iretq. */
-    sched_reschedule(NULL);
+    /* Only expire the slice and let the very next timer tick perform the
+     * switch — at most ~10 ms away, and every task here blocks in short
+     * spurts anyway.  Switching inline has the dispatcher iretq into the
+     * next task from halfway through a syscall, while the SYSCALL
+     * trampoline still owns the stack; the tick instead always hands the
+     * next task a complete hardware frame. */
 }
 
 /* ── Block current process ───────────────────────────────────── */

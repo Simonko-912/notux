@@ -77,7 +77,11 @@ static void handle_page_fault(CpuState *s) {
     if (s->error_code & 4) {
         if (current_proc) {
             fb_puts("Killing: "); fb_puts(current_proc->name); fb_puts("\n");
-            kser_puts("isr: user #PF killing "); kser_puts(current_proc->name); kser_puts("\n");
+            char dp[24];
+            kser_puts("isr: user #PF killing "); kser_puts(current_proc->name);
+            kser_puts(" cr2=0x"); num_to_str(cr2, dp, 16); kser_puts(dp);
+            kser_puts(" rip=0x"); num_to_str(s->rip, dp, 16); kser_puts(dp);
+            kser_puts("\n");
             proc_kill(current_proc, SIGSEGV);
             current_proc = NULL;
             sched_yield();
