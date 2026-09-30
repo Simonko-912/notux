@@ -42,6 +42,7 @@ struct Process {
     uint64_t  brk;
     int       fd[PROC_MAX_FD];
     int       exit_signal;
+    int       tty_id;        /* console this process talks to (fds 0-2) */
 };
 
 typedef struct Process Process;

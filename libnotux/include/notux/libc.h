@@ -184,6 +184,9 @@ int   nx_term_cols(void);
 
 /* Password input (disables echo) */
 int   nx_term_read_password(char *buf, int max);
+/* tty consoles: which console this process writes to / selects. */
+int   nx_gettty(void);
+void  nx_settty(int n);
 
 /* ─────────────────────────────────────────────────────────────
    TIME

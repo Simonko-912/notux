@@ -177,6 +177,8 @@ typedef struct {
     uint8_t *mft_cache;         /* cached MFT records (first 128) */
     uint32_t mft_cache_count;
 } NtfsState;
+/* Spelled out before first use below; carries the volume ntfs_usage() reads. */
+extern NtfsState *g_last_mount;
 
 /* ── Disk read helper ────────────────────────────────────────── */
 static int disk_read(NtfsState *s, uint64_t byte_offset,
@@ -1299,6 +1301,7 @@ typedef struct {
 /* ══════════════════════════════════════════════════════════════ */
 
 static int ntfs_mount(const char *device, void **fs_data_out) {
+    /* Tracking pointer is declared near the driver descriptor below. */
     /*
      * Device string formats:
      *   "ata:D:LBA"  — drive index D, partition start LBA (preferred)
@@ -1385,11 +1388,13 @@ static int ntfs_mount(const char *device, void **fs_data_out) {
     }
 
     *fs_data_out = s;
+    g_last_mount = s;
     return 0;
 }
 
 static void ntfs_umount(void *fs_data) {
     NtfsState *s = (NtfsState *)fs_data;
+    if (g_last_mount == s) g_last_mount = NULL;
     if (s->mft_cache) kfree(s->mft_cache);
     kfree(s);
 }
@@ -1715,6 +1720,30 @@ static int ntfs_rename(void *fs, const char *src, const char *dst) {
 }
 
 /* ── Driver descriptor ───────────────────────────────────────── */
+/* Tracks the most recently mounted volume so pre-mount setup screens can
+ * report sizes while browsing candidates one at a time. */
+NtfsState *g_last_mount;
+
+int ntfs_usage(uint64_t *total_mb, uint64_t *free_mb) {
+    NtfsState *s = g_last_mount;
+    if (!s || !s->bytes_per_cluster) return -1;
+
+    uint8_t *bm = NULL; uint64_t bits = 0;
+    if (read_bitmap(s, &bm, &bits) < 0) return -1;
+
+    uint64_t limit = s->total_clusters ? s->total_clusters : bits;
+    if (limit > bits) limit = bits;
+
+    uint64_t free_cl = 0;
+    for (uint64_t i = 0; i < limit; i++)
+        if (!(bm[i / 8] & (1 << (i % 8)))) free_cl++;
+    kfree(bm);
+
+    *total_mb = s->total_clusters * (uint64_t)s->bytes_per_cluster / (1024 * 1024);
+    *free_mb  = free_cl        * (uint64_t)s->bytes_per_cluster / (1024 * 1024);
+    return 0;
+}
+
 static VfsDriver g_ntfs_driver = {
     .name       = "ntfs",
     .mount      = ntfs_mount,

@@ -7,6 +7,7 @@
 #include "../../fs/vfs.h"
 #include "../../drivers/gfx/font.h"
 #include "../../drivers/input/ps2.h"
+#include "../../tty/tty.h"
 #include "../../drivers/net/tcp.h"
 #include "../../kernel.h"
 #include "../../fs/pathconv.h"
@@ -47,16 +48,20 @@ void syscall_set_kernel_stack(uint64_t top) {
 }
 
 /* ── Terminal I/O for the standard descriptors ────────────────── */
+/* Drawing stays on the direct framebuffer primitives — byte-for-byte the old
+ * behaviour every app was tuned against.  The tty layer contributes the parts
+ * the primitives never owned: named consoles, keyboard queues per console,
+ * and the identity/plumbing around them (GETTTY / SETTTY / Ctrl+Alt+Fn). */
 static void term_write(const void *buf, size_t n) {
     const char *p = (const char *)buf;
+    tty_write_str(p, n);                     /* mirror into the console model */
     for (size_t i = 0; i < n; i++) { fb_putc(p[i]); kser_putc(p[i]); }
 }
-
 static int64_t term_read(void *buf, size_t n) {
     char *p = (char *)buf;
     size_t i = 0;
     while (i < n) {
-        int c = ps2_getchar_block();
+        int c = ps2_getchar_block();         /* visible console's queue */
         if (c < 0) break;
         p[i++] = (char)c;
         if (c == '\n' || c == '\r') break;
@@ -159,12 +164,18 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
     case SYS_SOCKCLOSE: tcp_close((int)a1); return 0;
     case SYS_RESOLVE: return (int64_t)dns_resolve((const char*)a1);
     case SYS_PING:    return (int64_t)net_ping((uint32_t)a1);
-    case SYS_TERM_SETFG: fb_set_fg((uint32_t)a1); return 0;
-    case SYS_TERM_SETBG: fb_set_bg((uint32_t)a1); return 0;
-    case SYS_TERM_CLEAR: fb_clear(); return 0;
-    case SYS_TERM_MOVE:  fb_set_cursor((int)a1,(int)a2); return 0;
+    case SYS_TERM_SETFG: fb_set_fg((uint32_t)a1); tty_set_fg_only((uint32_t)a1); return 0;
+    case SYS_TERM_SETBG: fb_set_bg((uint32_t)a1); tty_set_bg_only((uint32_t)a1); return 0;
+    case SYS_TERM_CLEAR: fb_clear(); tty_model_clear(); return 0;
+    case SYS_TERM_MOVE:  fb_set_cursor((int)a1,(int)a2); tty_goto((int)a1,(int)a2); return 0;
     case SYS_TERM_ROWS:  return fb_get_rows();
     case SYS_TERM_COLS:  return fb_get_cols();
+    case SYS_GETTTY:     return tty_of_caller();
+    case SYS_SETTTY: {                       /* opt another console visible */
+        int idx = (int)a1;
+        tty_show(idx);
+        return idx;
+    }
     case SYS_UPTIME:     return (int64_t)sched_uptime_ms();
     case SYS_GETTIME:    rtc_gettime((void*)a1); return 0;
     case SYS_GETENV:     return 0;           /* env not implemented yet */

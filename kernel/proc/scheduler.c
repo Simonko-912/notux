@@ -271,12 +271,15 @@ static void sched_reschedule(CpuState *state) {
         return;
     }
     {
+        /* Quiet like a stock Linux console: one short line when a pid first
+         * takes the cpu, silence while the same task keeps bouncing along. */
+        static int shown_pid = -1;
         char dm[24];
-        kser_puts("[sch] -> pid "); num_to_str(next->pid, dm, 10); kser_puts(dm);
-        kser_puts(" rip=0x"); num_to_str(next->ctx.rip, dm, 16); kser_puts(dm);
-        kser_puts(" rsp=0x"); num_to_str(next->ctx.rsp, dm, 16); kser_puts(dm);
-        kser_puts(" via "); kser_puts(state ? "frame" : "fresh");
-        kser_puts("\n");
+        if ((int)next->pid != shown_pid) {
+            shown_pid = (int)next->pid;
+            kser_puts("[sch] pid "); num_to_str(next->pid, dm, 10); kser_puts(dm);
+            kser_puts("\n");
+        }
     }
 
     /* Nothing to iretq back into when the kernel re-entered us, and a
@@ -397,12 +400,11 @@ void sched_idle(void) {
 /* ── Yield (voluntary context switch) ───────────────────────── */
 void sched_yield(void) {
     slice_remaining = 0;
-    /* Only expire the slice and let the very next timer tick perform the
-     * switch — at most ~10 ms away, and every task here blocks in short
-     * spurts anyway.  Switching inline has the dispatcher iretq into the
-     * next task from halfway through a syscall, while the SYSCALL
-     * trampoline still owns the stack; the tick instead always hands the
-     * next task a complete hardware frame. */
+    /* Dispatch immediately.  Deferring to the next tick left the shell
+     * unscheduled for long stretches when init parked in its wait loop,
+     * and the prompt never appeared; yielding from a syscall has no IRQ
+     * frame to hand back, which sched_reschedule(NULL) handles directly. */
+    sched_reschedule(NULL);
 }
 
 /* ── Block current process ───────────────────────────────────── */

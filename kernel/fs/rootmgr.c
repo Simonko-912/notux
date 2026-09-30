@@ -425,8 +425,8 @@ void rootmgr_init(void) {
         show_partition_files(ntfs_list[0]->drive_idx,
                              ntfs_list[0]->start_lba);
         /* Single partition: auto-confirm after showing contents */
-        fb_puts("\nInstalling Notux on this partition in 3 seconds...\n");
-        fb_puts("(Press any key to choose a different partition)\n");
+        fb_puts("\nInstalling Notux on this partition...\n");
+        fb_puts("(Press any key during setup to choose a different partition.)\n");
         /* Brief delay then auto-proceed if no key */
         int got_key = 0;
         while(kbd_status() & 1) { kbd_inb(); }   /* drain stale buffer */

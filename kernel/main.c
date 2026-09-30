@@ -19,6 +19,7 @@
 #include "drivers/gfx/framebuffer.h"
 #include "drivers/gfx/font.h"
 #include "drivers/input/ps2.h"
+#include "tty/tty.h"
 #include "drivers/net/nic.h"
 #include "ipc/ipc.h"
 #include "svc/services.h"

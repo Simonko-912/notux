@@ -70,6 +70,7 @@ KERNEL_C := \
     kernel/drivers/gfx/font.c \
     kernel/drivers/gfx/fonts/sysfont.c \
     kernel/drivers/input/ps2.c \
+    kernel/tty/tty.c \
     kernel/drivers/disk/ata.c \
     kernel/drivers/disk/gpt.c \
     kernel/drivers/usb/usb.c \

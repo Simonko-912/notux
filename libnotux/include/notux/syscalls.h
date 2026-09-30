@@ -89,6 +89,10 @@
 #define SYS_TERM_RDPASS 406  /* read password (no echo) */
 #define SYS_TERM_RDLINE 407  /* read line with echo + history */
 
+/* ── tty consoles ────────────────────────────────────────────────── */
+#define SYS_GETTTY      408  /* console id attached to this process   */
+#define SYS_SETTTY      409  /* attach + make visible console n       */
+
 /* ── Time ────────────────────────────────────────────────────── */
 #define SYS_UPTIME      410
 #define SYS_GETTIME     411

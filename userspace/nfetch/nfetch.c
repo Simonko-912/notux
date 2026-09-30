@@ -37,7 +37,7 @@ int main(int argc, char **argv, char **envp) {
     nx_cprintf(WHITE, 0, "  Uptime:   %llu s\n",
                (unsigned long long)(nx_uptime_ms() / 1000));
     nx_cprintf(WHITE, 0, "  UID:      %u\n", nx_getuid());
-    nx_cprintf(WHITE, 0, "  Terminal: %d x %d\n", nx_term_rows(), nx_term_cols());
+    nx_cprintf(WHITE, 0, "  Terminal: tty%d (%dx%d)\n", nx_gettty(), nx_term_rows(), nx_term_cols());
 
     char cwd[256];
     if (nx_getcwd(cwd, sizeof(cwd)))

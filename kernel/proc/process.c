@@ -182,9 +182,14 @@ Process *proc_create_user(const char *name, const char *path,
     p->ctx.ss     = 0x23;
 
     if (current_proc)
+    {
         kstrncpy(p->cwd, current_proc->cwd, VFS_PATH_MAX);
+        p->tty_id = current_proc->tty_id;   /* children stay on the same console */
+    }
     else
+    {
         kstrncpy(p->cwd, "#/", VFS_PATH_MAX);
+    }
 
     return p;
 

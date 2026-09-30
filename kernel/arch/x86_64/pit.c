@@ -24,9 +24,35 @@
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile("outb %0,%1" :: "a"(val), "Nd"(port));
 }
+static inline uint8_t inb(uint16_t port) {
+    uint8_t v; __asm__ volatile("inb %1,%0" : "=a"(v) : "Nd"(port)); return v;
+}
 
 void pit_init(void) {
     outb(PIT_CMD,      PIT_CMD_INIT);
     outb(PIT_CHANNEL0, (uint8_t)(PIT_DIVISOR & 0xFF));        /* lo byte */
     outb(PIT_CHANNEL0, (uint8_t)((PIT_DIVISOR >> 8) & 0xFF)); /* hi byte */
+}
+
+/* Count real time off the channel-0 counter instead of iterating a fixed
+ * loop: every read of the PS/2 status port outruns any preset iteration
+ * count, so a counted loop paced differently on every host.  One full roll
+ * of the counter covers PIT_DIVISOR ticks of the 1.193182 MHz input. */
+static uint16_t pit_read_count(void) {
+    outb(PIT_CMD, 0x00);                      /* latch channel 0 */
+    uint8_t lo = inb(PIT_CHANNEL0);
+    uint8_t hi = inb(PIT_CHANNEL0);
+    return (uint16_t)lo | ((uint16_t)hi << 8);
+}
+
+void pit_delay_ms(uint32_t ms) {
+    uint32_t want = ms * (uint32_t)(PIT_FREQUENCY / 1000UL);
+    uint32_t acc = 0;
+    uint16_t prev = pit_read_count();
+    while (acc < want) {
+        uint16_t cur = pit_read_count();
+        acc += (prev >= cur) ? (uint32_t)(prev - cur)
+                             : (uint32_t)(prev + PIT_DIVISOR - cur);
+        prev = cur;
+    }
 }
