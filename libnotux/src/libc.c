@@ -26,18 +26,24 @@ int nx_getchar(void) {
     return (unsigned char)ch;
 }
 
+/* Live-edit line reader: characters are echoed as they arrive so the user
+ * sees input before pressing Enter.  '\b' rewinds the echo with the usual
+ * back-space / blank / back-space trio. */
 char *nx_gets(char *buf, int n) {
     if (!buf || n <= 0) return NULL;
     int i = 0;
     for (;;) {
         int c = nx_getchar();
         if (c < 0) break;
-        if (c == '\r' || c == '\n') break;
+        if (c == '\r' || c == '\n') { nx_putchar('\n'); break; }
         if (c == '\b') {
-            if (i > 0) { i--; nx_putchar('\b'); }
+            if (i > 0) { i--; nx_putchar('\b'); nx_putchar(' '); nx_putchar('\b'); }
             continue;
         }
-        if (i < n - 1) buf[i++] = (char)c;
+        if (i < n - 1) {
+            buf[i++] = (char)c;
+            nx_putchar(c);
+        }
     }
     buf[i] = '\0';
     return buf;

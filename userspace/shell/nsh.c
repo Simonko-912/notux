@@ -102,8 +102,15 @@ static void print_prompt(void) {
     nx_sprintf(uname, "user%d", nx_getuid());
     nx_cprintf(CLR_NAME, 0, "%s", uname);
     nx_cprintf(CLR_INFO, 0, "@notux:");
-    nx_cprintf(CLR_DIR, 0, "%s", g_cwd);
-    nx_cprintf(CLR_PROMPT, 0, "# ");
+    /* Hide the root's trailing slash and end with '>' so the root prompt
+     * reads "#> " instead of the doubled-looking "#/# ". */
+    char shown[NSH_PATH_MAX];
+    nx_strncpy(shown, g_cwd, sizeof(shown) - 1);
+    shown[sizeof(shown) - 1] = '\0';
+    size_t len = nx_strlen(shown);
+    while (len > 1 && shown[len - 1] == '/') shown[--len] = '\0';
+    nx_cprintf(CLR_DIR, 0, "%s", shown);
+    nx_cprintf(CLR_PROMPT, 0, "> ");
 }
 
 static void seed_path(void) {

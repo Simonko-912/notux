@@ -33,5 +33,7 @@ struct _FsDirent_t {
 
 static inline int fs_readdir(void *dir, struct _FsDirent_t *entry) {
     NxFileInfo fi;
-    return nx_readdir(dir, entry->name, &fi);
+    int r = nx_readdir(dir, entry->name, &fi);
+    if (r == 0) { entry->size = fi.size; entry->flags = fi.flags; }
+    return r;
 }

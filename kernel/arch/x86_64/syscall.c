@@ -23,6 +23,10 @@
 
 static SysArea g_sys_area;
 uint8_t g_user_exit = 0;
+/* R11 holds the user's RFLAGS at SYSCALL time, but R11 is caller-saved and
+ * syscall_handler clobbers it.  The trampoline stashes the real value here so
+ * the return path can restore the user's interrupt flag instead of garbage. */
+volatile uint64_t g_user_rflags = 0x202;
 
 static inline void wrmsr(uint32_t msr, uint64_t val) {
     __asm__ volatile("wrmsr"::"c"(msr),"a"((uint32_t)(val&0xFFFFFFFFu)),"d"((uint32_t)(val>>32)));
@@ -45,7 +49,7 @@ void syscall_set_kernel_stack(uint64_t top) {
 /* ── Terminal I/O for the standard descriptors ────────────────── */
 static void term_write(const void *buf, size_t n) {
     const char *p = (const char *)buf;
-    for (size_t i = 0; i < n; i++) fb_putc(p[i]);
+    for (size_t i = 0; i < n; i++) { fb_putc(p[i]); kser_putc(p[i]); }
 }
 
 static int64_t term_read(void *buf, size_t n) {
@@ -64,14 +68,6 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
                          uint64_t a3,uint64_t a4,uint64_t a5){
     (void)a4;
     (void)a5;
-    if (nr == SYS_WRITE && g_sys_area.diag_count < 3) {
-        char d[24];
-        g_sys_area.diag_count++;
-        kser_puts("sc: nr=1 a1=0x"); num_to_str(a1, d, 16); kser_puts(d);
-        kser_puts(" a2=0x"); num_to_str(a2, d, 16); kser_puts(d);
-        kser_puts(" a3=0x"); num_to_str(a3, d, 16); kser_puts(d);
-        kser_puts("\n");
-    }
     switch(nr){
     case SYS_READ:
         if ((int)a1 == 0) return term_read((void*)a2,(size_t)a3);
@@ -119,11 +115,22 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
     case SYS_GETPPID: return current_proc?(int64_t)current_proc->ppid:0;
     case SYS_GETUID:  return current_proc?(int64_t)current_proc->uid:0;
     case SYS_FORK:    { Process *c=proc_fork(); return c?(int64_t)c->pid:-ENOMEM; }
-    case SYS_EXEC:
+    case SYS_EXEC: {
         if (!a1) return -EINVAL;
         return proc_exec_path((const char*)a1,(const char**)a2,(const char**)a3);
+    }
     case SYS_EXIT:    return proc_do_exit((int)a1);
-    case SYS_WAIT:    return 0;
+    case SYS_WAIT: {
+        /* wait(4): a1 = &status.  Returns the reaped child's pid, or -1
+         * when there is nothing to collect yet so the caller can sleep
+         * and try again.  Returning 0 unconditionally made init believe a
+         * child had exited and re-exec nsh in a tight loop. */
+        int st = 0;
+        int pid = sched_reap_child(&st);
+        if (pid < 0) return -1;
+        if (a1) *(volatile int *)(uintptr_t)a1 = st;
+        return pid;
+    }
     case SYS_KILL:    return proc_kill_pid((int32_t)a1,(int)a2);
     case SYS_SLEEP:   sched_sleep_ms((uint32_t)a1); return 0;
     case SYS_YIELD:   sched_yield(); return 0;
@@ -168,8 +175,16 @@ int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,
 
 void syscall_init(void){
     uint64_t efer=rdmsr(MSR_EFER); efer|=1; wrmsr(MSR_EFER,efer);
-    /* STAR layout for this GDT: SYSCALL CS=0x08 SS=0x10, SYSRET CS base=0x18 (+3 RPL). */
-    wrmsr(MSR_STAR,  ((uint64_t)0x08 << 40) | ((uint64_t)0x1B << 32));
+    /* STAR layout (Intel): STAR[47:32] is the SYSCALL CS and SS is that
+     * value +8; STAR[63:48] is the SYSRET CS base with the real CS being
+     * that value +16.  The previous write had the two halves backwards:
+     * SYSCALL then entered the kernel at CS=0x18 / SS=0x20 instead of
+     * 0x08 / 0x10, so every syscall ran on selectors the ISR stubs and the
+     * scheduler never recognise, and a timer tick mid-syscall iretq'd a
+     * "CS=0x818" frame into a #GP.  Note the SYSRET CS here is 0x0B only
+     * because Intel adds the +16 itself; the 0x1B user CS appears after
+     * that adjustment (with its RPL set by the CPU). */
+    wrmsr(MSR_STAR,  ((uint64_t)0x0B << 48) | ((uint64_t)0x08 << 32));
     wrmsr(MSR_LSTAR, (uint64_t)(uintptr_t)syscall_entry_asm);
     /* Mask IF/DF on entry, but keep IF set after SYSRET. */
     wrmsr(MSR_SFMASK,(1u<<9)|(1u<<10)|(1u<<8));
@@ -180,13 +195,4 @@ void syscall_init(void){
 
     /* Ensure the active kernel stack is visible to swapgs from ring 3. */
     syscall_set_kernel_stack((uint64_t)(uintptr_t)&g_sys_area + sizeof(g_sys_area));
-    kser_puts("syscall: LSTAR=0x");
-    char d[24];
-    num_to_str(rdmsr(MSR_LSTAR), d, 16); kser_puts(d);
-    kser_puts(" GS=0x");
-    num_to_str(rdmsr(MSR_KERNEL_GS_BASE), d, 16); kser_puts(d);
-    kser_puts("\n");
-    __asm__ volatile("swapgs" ::: "memory");
-    num_to_str(rdmsr(MSR_GS_BASE), d, 16); kser_puts("after swap GS_BASE=0x"); kser_puts(d); kser_puts("\n");
-    __asm__ volatile("swapgs" ::: "memory");
 }

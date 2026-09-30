@@ -49,10 +49,21 @@ void kmain(BootInfo *bi) {
     /* The kernel image outgrew the hard-coded 2 MiB reserved inside
      * pmm_init; claim the real extent or the heap lands on our BSS. */
     pmm_reserve(bi->kernel_phys, bi->kernel_size);
+    /* Belt and braces: entry.asm already moved us onto this stack, and the
+     * loader allocated it as EfiBootServicesData so the PMM skips it anyway.
+     * Claim it explicitly so no future change to uefi_usable() can quietly
+     * recycle the memory we are standing on. */
+    if (bi->kstack_phys)
+        pmm_reserve(bi->kstack_phys, bi->kstack_bytes);
 
     /* 3. VMM (identity-mapped for now) */
     vmm_init(bi->kernel_phys, bi->kernel_virt, bi->kernel_size);
     vmm_map_low_identity();
+
+    /* gdt_init() ran before the PMM existed, so the TSS still has a zero
+     * ist[] and rsp0.  Give the IST vectors (NMI, #DF) and ring-0 entries
+     * real stacks now that we can allocate them. */
+    gdt_setup_stacks();
 
     /* 4. Heap */
     kheap_init();

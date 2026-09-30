@@ -23,6 +23,10 @@ typedef uint64_t EFI_VIRTUAL_ADDRESS;
 #define EFI_OPEN_PROTOCOL_GET_PROTOCOL 2u
 #define EFI_FILE_MODE_READ       1ULL
 #define EfiLoaderData            2u
+/* Memory the kernel must never recycle: the PMM's uefi_usable() only
+ * accepts EfiConventionalMemory(7), EfiLoaderData(2) and
+ * EfiBootServicesCode(3), so type 4 stays reserved for good. */
+#define EfiBootServicesData      4u
 #define AllocateAddress          2u
 #define AllocateAnyPages         0u
 

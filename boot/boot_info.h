@@ -34,4 +34,7 @@ typedef struct {
     uint64_t        kernel_phys;
     uint64_t        kernel_virt;
     uint64_t        kernel_size;
+    uint64_t        kstack_phys;   /* stack the kernel boots on, not the
+                                       firmware's loader stack */
+    uint64_t        kstack_bytes;
 } BootInfo;

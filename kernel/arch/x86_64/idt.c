@@ -53,6 +53,18 @@ void idt_init(void) {
         idt_set_gate(i, (void (*)(void))isr_stubs[i], 0, 0);
     }
 
+    /* Hardware IRQs (vectors 32..255) keep DPL 0.  External interrupts are
+     * never blocked by a gate DPL: the privilege check for a hardware
+     * vector uses the handler's code-segment DPL, so a ring-3 process is
+     * preempted through the same DPL-0 gates the kernel uses.  Giving the
+     * gates DPL 3 (as once tried) makes the CPU/QEMU treat the delivery as
+     * targeting privilege 3 and load RSP from the TSS ring-3 slot, which
+     * is zero -- the first push faults and the machine triple-faults.
+     * int 0x80 stays DPL 3 so user code can invoke it deliberately. */
+    for (int i = 32; i < 256; i++) {
+        idt_set_gate(i, (void (*)(void))isr_stubs[i], 0, 0);
+    }
+
     idt_set_gate(8,   (void (*)(void))isr_stubs[8],   0, 1);
     idt_set_gate(2,   (void (*)(void))isr_stubs[2],   0, 2);
     idt_set_gate(0x80,(void (*)(void))isr_stubs[0x80], 3, 0);

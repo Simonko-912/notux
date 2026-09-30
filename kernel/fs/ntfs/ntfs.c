@@ -750,21 +750,24 @@ static uint64_t lookup_path(NtfsState *s, const char *path) {
     kstrncpy(path_copy, path, VFS_PATH_MAX);
 
     char *component = path_copy;
-    while (*component == '/' || *component == '#') component++;
-    if (*component == '\0') return dir_mft;
+    for (;;) {
+        /* Separators and lone "." components both mean "this volume root",
+         * so stepping over them lets "#/", "./x" and "" resolve here. */
+        while (*component == '/' || *component == '#') component++;
+        if (component[0] == '.' && (component[1] == '\0' || component[1] == '/'))
+            component += 2;
+        if (*component == '\0') break;
 
-    char *slash;
-    do {
-        slash = kstrchr(component, '/');
-        if (slash) *slash = '\0';
+        char *slash = kstrchr(component, '/');
+        if (slash) *slash++ = '\0';
 
         uint64_t found = lookup_child(s, dir_mft, component);
         if (found == (uint64_t)-1) return (uint64_t)-1;
         dir_mft = found;
 
-        if (slash) component = slash + 1;
-        else       break;
-    } while (slash && *component);
+        if (!slash) break;
+        component = slash;
+    }
 
     return dir_mft;
 }

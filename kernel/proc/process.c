@@ -181,13 +181,6 @@ Process *proc_create_user(const char *name, const char *path,
     p->ctx.cs     = 0x1B;
     p->ctx.ss     = 0x23;
 
-    {
-        char d[24];
-        kser_puts("proc: rip=0x"); num_to_str(p->ctx.rip, d, 16); kser_puts(d);
-        kser_puts(" rsp=0x"); num_to_str(p->ctx.rsp, d, 16); kser_puts(d);
-        kser_puts("\n");
-    }
-
     if (current_proc)
         kstrncpy(p->cwd, current_proc->cwd, VFS_PATH_MAX);
     else
@@ -234,9 +227,13 @@ Process *proc_fork(void) {
 /* ── Exit ────────────────────────────────────────────────────── */
 int proc_do_exit(int code) {
     if (current_proc) {
-        current_proc->state = PROC_ZOMBIE;
+        /* Stay in the run queue as a zombie.  pick_next() only ever hands
+         * back PROC_READY, so a zombie is never scheduled again, but the
+         * parent can still find it in wait() and collect the status.  An
+         * earlier sched_remove() here dropped the only reference, which is
+         * why SYS_WAIT could never report anything. */
+        current_proc->state       = PROC_ZOMBIE;
         current_proc->exit_signal = code;
-        sched_remove(current_proc);
         current_proc = NULL;
     }
     g_user_exit = 1;
@@ -248,8 +245,10 @@ void proc_kill(Process *proc, int signal) {
     if (!proc) return;
     proc->exit_signal = signal;
     proc->state       = PROC_ZOMBIE;
-    sched_remove(proc);
-    proc_cleanup(proc);
+    /* Left for the parent to reap, exactly as proc_do_exit does.  The old
+     * sched_remove() + proc_cleanup() freed the Process immediately, so a
+     * parent still blocked in wait() had nothing left to find. */
+    if (proc == current_proc) current_proc = NULL;
 }
 
 /* ── Cleanup ─────────────────────────────────────────────────── */
@@ -294,5 +293,10 @@ void proc_init_main(void) {
         fb_puts("[init] Boot complete.\n");
     }
 
-    for (;;) sched_yield();
+    /* This kernel thread has done its one job: spawn the userspace init
+     * and hand the machine over.  Block forever instead of spinning on
+     * sched_yield(), which keeps it PROC_RUNNING/READY so a later timer
+     * tick can pick it and try to resume a mid-function kernel frame the
+     * scheduler has no way to restore.  Blocked is never picked. */
+    sched_block(WAIT_CHILD);
 }

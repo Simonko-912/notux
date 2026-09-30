@@ -88,36 +88,51 @@ int nsh_is_builtin(const char *name) {
 
 /* ── path helpers ────────────────────────────────────────────── */
 static void dir_join(char *out, size_t n, const char *base, const char *rel) {
-    if (rel[0] == '#') { nx_strncpy(out, rel, n - 1); return; }
-    if (rel[0] == '/') { nx_strncpy(out, rel, n - 1); return; }
-    if (rel[0] == '\0') { nx_strncpy(out, base, n - 1); return; }
-    char tmp[NSH_PATH_MAX];
-    if (base[0] && nx_strcmp(base, "#/") != 0)
-        nx_snprintf(tmp, sizeof(tmp), "%s/%s", base, rel);
-    else if (rel[0] == '.')
-        nx_strncpy(tmp, rel, sizeof(tmp) - 1);
-    else
-        nx_snprintf(tmp, sizeof(tmp), "#/%s", rel);
+    char raw[NSH_PATH_MAX];
 
-    /* collapse .. */
-    char in[NSH_PATH_MAX], outbuf[NSH_PATH_MAX];
-    nx_strncpy(in, tmp, sizeof(in) - 1);
-    char *parts[64];
+    /* An absolute rel replaces the base; everything else hangs off it with
+     * exactly one separator so repeated joins stay stable. */
+    if (rel[0] == '#' || rel[0] == '/') {
+        nx_strncpy(raw, rel, sizeof(raw) - 1);
+    } else if (!rel[0]) {
+        nx_strncpy(raw, (base && base[0]) ? base : "#/", sizeof(raw) - 1);
+    } else if (!base || !base[0]) {
+        nx_snprintf(raw, sizeof(raw), "#/%s", rel);
+    } else {
+        nx_snprintf(raw, sizeof(raw), "%s/%s", base, rel);
+    }
+    raw[sizeof(raw) - 1] = '\0';
+
+    /* Split on '/', drop empty and "." components, honour "..".  The '#'
+     * root marker is a prefix, not a component, so it never leaks into the
+     * body of the path. */
+    char *body = raw;
+    while (*body == '#' || *body == '/') body++;
+
+    char *parts[NSH_PATH_MAX / 2];
+    int max_parts = (int)(sizeof(parts) / sizeof(parts[0]));
     int np = 0;
-    char *tok = nx_strtok(in, "/");
-    while (tok) {
-        if (nx_strcmp(tok, ".") == 0) { /* skip */ }
-        else if (nx_strcmp(tok, "..") == 0) { if (np > 0) np--; }
-        else parts[np++] = tok;
-        tok = nx_strtok(NULL, "/");
+    char *tok = body;
+    while (*tok) {
+        char *next = nx_strchr(tok, '/');
+        if (next) *next++ = '\0';
+        if (*tok) {
+            if (nx_strcmp(tok, ".") == 0) { /* current dir: nothing to add */ }
+            else if (nx_strcmp(tok, "..") == 0) { if (np > 0) np--; }
+            else if (np < max_parts) parts[np++] = tok;
+        }
+        tok = next;
     }
-    outbuf[0] = '\0';
-    for (int i = 0; i < np; i++) {
-        nx_strcat(outbuf, "/");
-        nx_strcat(outbuf, parts[i]);
+
+    size_t w = 0;
+    if (n > 1) out[w++] = '#';
+    for (int i = 0; i < np && w + 1 < n; i++) {
+        out[w++] = '/';
+        const char *s = parts[i];
+        while (*s && w + 1 < n) out[w++] = *s++;
     }
-    if (outbuf[0] == '\0') nx_strcpy(outbuf, "/");
-    nx_snprintf(out, n, "#%s", outbuf);
+    if (np == 0 && w + 1 < n) out[w++] = '/';   /* bare root is "#/" */
+    out[w] = '\0';
 }
 
 static void list_dir(const char *path) {
@@ -180,8 +195,7 @@ static void cmd_cd(char **a) {
 
 static void cmd_dir(char **a) {
     char path[NSH_PATH_MAX];
-    if (a[0] && a[0][0]) dir_join(path, sizeof(path), g_cwd, a[0]);
-    else nx_strncpy(path, g_cwd, sizeof(path) - 1);
+    dir_join(path, sizeof(path), g_cwd, a[0] ? a[0] : "");
     list_dir(path);
 }
 

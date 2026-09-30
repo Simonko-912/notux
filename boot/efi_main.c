@@ -213,6 +213,21 @@ EFI_STATUS efi_main(EFI_HANDLE Img, EFI_SYSTEM_TABLE *Sys){
     s=load_elf(elf,&entry,&bi);
     if(s){ com_puts("FATAL: ELF bad\n"); for(;;)__asm__("hlt"); }
 
+    /* Hand the kernel a stack it owns. Allocated as EfiBootServicesData
+     * so the kernel's PMM (which recycles only EfiLoaderCode,
+     * EfiLoaderData, EfiBootServicesCode and EfiConventionalMemory)
+     * will never hand this memory out again. The firmware's own loader
+     * stack stays live while we run, so it must not be reused. */
+    {
+        const UINTN kstack_pages = 16;
+        UINTN kstack_pa = 0;
+        s = BS->AllocatePages(AllocateAnyPages, EfiBootServicesData,
+                              kstack_pages, &kstack_pa);
+        if (s) { com_puts("FATAL: kstack alloc\n"); for(;;)__asm__("hlt"); }
+        bi.kstack_phys  = kstack_pa;
+        bi.kstack_bytes = kstack_pages * 4096;
+    }
+
     /* Exit boot services */
     com_puts("ExitBootServices...\n");
     s=get_mmap(&bi.mmap);
