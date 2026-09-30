@@ -146,7 +146,12 @@ int64_t tty_read_line(char *buf, size_t n) {
             if (ch == '\n' || ch == '\r') return (int64_t)i;   /* end of line */
         }
         if (i > 0) break;                              /* served what was there */
-        __asm__ volatile("sti; hlt");                  /* nothing yet: nap once */
+        /* Spin briefly (never hlt inside the SYSCALL handler: ticks landing
+         * mid-transition skew the iretq unwind).  Keys queued before or just
+         * after entry are picked up within this loop; a truly idle terminal
+         * returns 0 quickly and the reader simply calls again. */
+        int laps = 2000;
+        while (laps-- > 0 && t->it == t->ih) __asm__ volatile("pause");
     }
     return (int64_t)i;
 }
