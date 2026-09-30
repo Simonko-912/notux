@@ -123,12 +123,16 @@ static void print_prompt(void) {
     nx_cprintf(CLR_PROMPT, 0, "> ");
 }
 
-/* Collapse the previously drawn prompt before laying a fresh one so idle
- * poll cycles heal in place instead of marching rightward across the row. */
+/* Collapse any previous prompt/output remnants on the current row before
+ * laying fresh text. Blank the whole terminal width rather than trusting a
+ * remembered length: leftovers beyond that length are exactly what looked
+ * like text drifting sideways. Clamped to stay on one row. */
 static void nsh_clear_old_prompt(void) {
     int i;
+    int cols = nx_term_cols();
+    if (cols < 20 || cols > NSH_PATH_MAX) cols = g_prompt_w > 79 ? 79 : g_prompt_w;
     nx_putchar('\r');
-    for (i = 0; i < g_prompt_w; i++) nx_putchar(' ');
+    for (i = 0; i < cols; i++) nx_putchar(' ');
     nx_putchar('\r');
 }
 
