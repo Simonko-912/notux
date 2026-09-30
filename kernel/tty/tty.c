@@ -140,13 +140,14 @@ int64_t tty_read_line(char *buf, size_t n) {
     prepare();
     Console *t = con_at(tty_of_caller());
     size_t i = 0;
-    /* Park between checks so the PIT tick (and with it the keyboard IRQ that
-     * fills this queue) keeps running; a keystroke wakes this within one or
-     * two ticks (~10-20 ms at 100 Hz). The cap only matters on long silences
-     * where callers rediscover their prompt occasionally; while anyone types,
-     * this is effectively a blocking read and bursts drain whole. */
-    int waits = 0;
-    while (t->it == t->ih && waits++ < 50) tty_nap();
+    /* Plain blocking read. Every wake between the empties costs the caller
+     * another erase-and-reprint pass, so with a bounded wait a simply idle
+     * terminal re-pastes its prompt every fraction of a second and smears
+     * pad blanks across the row. Parking until a keystroke actually lands
+     * keeps the prompt drawn exactly once and still wakes promptly: the PIT
+     * tick and PS/2 IRQ fire normally while hlt holds, and tty_got_char()
+     * filling the queue releases this loop. */
+    while (t->it == t->ih) tty_nap();
     while (i < n && t->it != t->ih) {
         unsigned char ch = t->in_q[t->it];
         t->it = (t->it + 1) % TTY_INQ_SIZE;

@@ -207,20 +207,10 @@ run: $(IMG)
 	    -serial stdio \
 	    -no-reboot
 
+# Single-line recipes: folding multi-line commands with '\' trips plain dash,
+# which parses the joined result as an unterminated quote. Bash tolerated it.
 run-log: $(IMG)
-	@rm -f $(BUILD)/serial.log
-	@qemu-system-x86_64 \
-	    -bios $(OVMF) \
-	    -drive if=ide,format=raw,file=$(IMG) \
-	    -m 256M \
-	    -display none \
-	    -chardev file,id=ser,path=$(BUILD)/serial.log \
-	    -serial chardev:ser \
-	    -no-reboot -no-shutdown & \
-	sleep 20; kill $$! 2>/dev/null || true; \
-	echo "=== Serial log ==="; \
-	strings $(BUILD)/serial.log 2>/dev/null \
-	    | grep -v "^\[" | grep -v "^=$" | head -60
+	@rm -f $(BUILD)/serial.log; qemu-system-x86_64 -bios $(OVMF) -drive if=ide,format=raw,file=$(IMG) -m 256M -display none -chardev file,id=ser,path=$(BUILD)/serial.log -serial chardev:ser -no-reboot -no-shutdown & pid=$$!; sleep 20; kill $$pid 2>/dev/null || true; echo "=== Serial log ==="; strings $(BUILD)/serial.log 2>/dev/null | grep -v '^\[' | grep -v '^\=' | head -60
 
 # ── Compile check ─────────────────────────────────────────────
 check:

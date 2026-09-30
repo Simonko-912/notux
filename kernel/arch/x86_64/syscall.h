@@ -28,7 +28,9 @@ typedef struct {
     uint64_t arg6;
 } SysArea;
 
-void    syscall_set_kernel_stack(uint64_t top);
+/* Pair a per-process scratch block (bottom of its kernel-stack region) with
+ * that stack's top; see syscall.c for why both must travel together. */
+void    syscall_set_kernel_stack(uint64_t area_base, uint64_t top);
 
 /* Set by SYS_EXIT so the trampoline knows not to sysret back to user */
 extern uint8_t g_user_exit;

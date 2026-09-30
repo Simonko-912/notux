@@ -41,9 +41,21 @@ static inline uint64_t rdmsr(uint32_t msr) {
 /* Defined in syscall_entry.asm */
 extern void syscall_entry_asm(void);
 
-/* Update the kernel stack used for ring-3 entry (syscall + interrupts) */
-void syscall_set_kernel_stack(uint64_t top) {
-    g_sys_area.kernel_stack = top;
+/* Point the SYSCALL scratch area at one process's own context block and pair
+ * it with the matching kernel-stack top.
+ *
+ * The scratch lives at the bottom of the process's kernel-stack region, so
+ * each task reads/writes ONLY its own block even when tasks interleave in the
+ * handoff windows between sched_yield/enter_process hand-offs — one shared
+ * global lets whichever task entered last leave torn values that a returning
+ * earlier task then trusts in its iretq reload path (the sporadic #DF on the
+ * first push of syscall_entry_asm). The block pointer goes into KERNEL_GS_BASE
+ * so swapgs delivers it to that task; the top feeds both the [gs:0] slot and
+ * TSS.RSP0 so ring-3 entries and interrupts agree. */
+void syscall_set_kernel_stack(uint64_t area_base, uint64_t top) {
+    SysArea *area = (SysArea *)(uintptr_t)area_base;
+    area->kernel_stack = top;              /* persistent per-task slot */
+    wrmsr(MSR_KERNEL_GS_BASE, area_base);
     gdt_set_kernel_stack(top);
 }
 
@@ -200,6 +212,8 @@ void syscall_init(void){
     g_sys_area.kernel_stack = 0;
     g_user_exit = 0;
 
-    /* Ensure the active kernel stack is visible to swapgs from ring 3. */
-    syscall_set_kernel_stack((uint64_t)(uintptr_t)&g_sys_area + sizeof(g_sys_area));
+    /* Seed the boot context: the static area plus the top of its own region,
+     * mirroring the per-process layout schedulers switch to later. */
+    syscall_set_kernel_stack((uint64_t)(uintptr_t)&g_sys_area,
+                             (uint64_t)(uintptr_t)&g_sys_area + sizeof(g_sys_area));
 }

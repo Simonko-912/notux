@@ -16,6 +16,10 @@ int nx_puts(const char *s) {
     size_t n = nx_strlen(s);
     if (n && nx_syscall(SYS_WRITE, 1, (long)(uintptr_t)s, (long)n) < 0)
         return -1;
+    /* Terminate the line exactly once. Most callers already end their text
+     * with '\n'; appending a second one would scatter blank rows through
+     * every listing and only widen the gap around prompts. */
+    if (n && s[n - 1] == '\n') return (int)n;
     return nx_putchar('\n');
 }
 

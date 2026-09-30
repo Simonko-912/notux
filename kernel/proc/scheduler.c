@@ -152,9 +152,9 @@ int sched_reap_child(int *status) {
  * the boot stack means the two disagree and IRQs clobber whatever
  * happens to be there. */
 static void arm_kernel_stack(Process *p) {
-    uint64_t top = p->kernel_stack_phys + KSTACK_BYTES;
-    syscall_set_kernel_stack(top);
-    gdt_set_kernel_stack(top);
+    uint64_t base = p->kernel_stack_phys;          /* scratch at region bottom */
+    uint64_t top  = base + KSTACK_BYTES;
+    syscall_set_kernel_stack(base, top);           /* sets TSS.RSP0 too */
 }
 
 static void __attribute__((noreturn)) enter_process(Process *next);
@@ -316,9 +316,11 @@ static void sched_reschedule(CpuState *state) {
      * task — its rsp/ss describe that task's stack.  Dressing that frame
      * up for whoever we picked next resumes the new task against stack
      * state it never owned, so every cross-task hop goes through
-     * enter_process, which lays down a complete frame of its own. */
-    if (!state || next != current_proc ||
-        ((fromcs & 3) != (next->ctx.cs & 3)))
+     * enter_process, which lays down a complete frame of its own.
+     * A same-task resume is the opposite case: the hardware frame already
+     * holds exactly where that task left off, so trust it with a patch
+     * instead of rebuilding from the older ctx snapshot. */
+    if (!state || next != current_proc)
         enter_process(next);                    /* never returns */
 
     current_proc        = next;
