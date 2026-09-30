@@ -58,15 +58,11 @@ static void term_write(const void *buf, size_t n) {
     for (size_t i = 0; i < n; i++) { fb_putc(p[i]); kser_putc(p[i]); }
 }
 static int64_t term_read(void *buf, size_t n) {
-    char *p = (char *)buf;
-    size_t i = 0;
-    while (i < n) {
-        int c = ps2_getchar_block();         /* visible console's queue */
-        if (c < 0) break;
-        p[i++] = (char)c;
-        if (c == '\n' || c == '\r') break;
-    }
-    return (int64_t)i;
+    /* Route through the tty layer so waiting honors the paced tick/hlt rhythm
+     * there: first byte wakes the reader within a couple of ticks, remaining
+     * burst bytes drain in the same call. A plain peek returned instantly and
+     * made idle readers spin their whole prompt loop per blink. */
+    return tty_read_line((char *)buf, n);
 }
 
 int64_t syscall_handler(uint64_t nr,uint64_t a1,uint64_t a2,

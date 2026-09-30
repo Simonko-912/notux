@@ -97,6 +97,10 @@ extern isr_dispatch
 ; function.  A ring-0 -> ring-3 switch needs a genuine RSP/SS, so it never
 ; comes back through here at all -- sched_tick hands it to
 ; sched_enter_from_exit, which builds a complete frame of its own.
+; Leaving the stub: every visit gets the five-slot normalized frame, mask TF
+; in its RFLAGS slot, and a plain iretq consumes the whole thing. Any rsp
+; bookkeeping beyond this skews nested tick frames and eventually doubles the
+; stack pointer off its region (#DF with cr2 pinned to minus-eight).
 %macro LEAVE_FRAME 2
     mov  r11, 0FFFFFFFFFFFFFEFFh
     and  qword [rsp + 2*8], r11      ; never resume with TF still set

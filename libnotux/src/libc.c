@@ -22,8 +22,8 @@ int nx_puts(const char *s) {
 int nx_getchar(void) {
     char ch;
     long r = nx_syscall(SYS_READ, 0, (long)(uintptr_t)&ch, 1);
-    if (r <= 0) return -1;
-    return (unsigned char)ch;
+    if (r > 0) return (unsigned char)ch;
+    return -1;
 }
 
 /* Console identity helpers for the tty layer. */

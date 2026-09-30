@@ -97,20 +97,39 @@ void nsh_save_history_line(const char *line) {
     g_history_pos = g_history_count;
 }
 
+static int g_prompt_w;                  /* visible width of the last prompt */
+
 static void print_prompt(void) {
     char uname[24];
+    char shown[NSH_PATH_MAX];
+    char full[NSH_PATH_MAX + 48];
+    size_t len;
+
     nx_sprintf(uname, "user%d", nx_getuid());
-    nx_cprintf(CLR_NAME, 0, "%s", uname);
-    nx_cprintf(CLR_INFO, 0, "@notux:");
     /* Hide the root's trailing slash and end with '>' so the root prompt
      * reads "#> " instead of the doubled-looking "#/# ". */
-    char shown[NSH_PATH_MAX];
     nx_strncpy(shown, g_cwd, sizeof(shown) - 1);
     shown[sizeof(shown) - 1] = '\0';
-    size_t len = nx_strlen(shown);
+    len = nx_strlen(shown);
     while (len > 1 && shown[len - 1] == '/') shown[--len] = '\0';
+
+    /* Measure the whole line first; fragments then go out coloured. */
+    nx_snprintf(full, sizeof(full), "%s@notux:%s> ", uname, shown);
+    g_prompt_w = (int)nx_strlen(full);
+
+    nx_cprintf(CLR_NAME, 0, "%s", uname);
+    nx_cprintf(CLR_INFO, 0, "@notux:");
     nx_cprintf(CLR_DIR, 0, "%s", shown);
     nx_cprintf(CLR_PROMPT, 0, "> ");
+}
+
+/* Collapse the previously drawn prompt before laying a fresh one so idle
+ * poll cycles heal in place instead of marching rightward across the row. */
+static void nsh_clear_old_prompt(void) {
+    int i;
+    nx_putchar('\r');
+    for (i = 0; i < g_prompt_w; i++) nx_putchar(' ');
+    nx_putchar('\r');
 }
 
 static void seed_path(void) {
@@ -128,7 +147,10 @@ int main(void) {
     seed_path();
 
     char line[300];
+    int first = 1;
     for (;;) {
+        if (!first) nsh_clear_old_prompt();     /* repaint in place */
+        first = 0;
         print_prompt();
         if (nsh_getline(line, sizeof(line)) < 0) break;
 

@@ -102,6 +102,8 @@ static void handle_page_fault(CpuState *s) {
     for(;;) __asm__ volatile("cli;hlt");
 }
 
+void pic_eoi_now(int irq) { pic_eoi(irq); }
+
 void isr_dispatch(CpuState *s) {
     uint64_t vec = s->vector;
     /* A CPL-0 frame has no rsp/ss pushed, so those two words are stack

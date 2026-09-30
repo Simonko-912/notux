@@ -177,6 +177,10 @@ Process *proc_create_user(const char *name, const char *path,
     if (build_user_stack(p, ustack_phys, argv, envp) < 0) goto fail;
 
     p->ctx.rip    = entry_point;
+    /* IF mandatory for the whole life of a ring-3 task: ticks preempt it and
+     * the PS/2 IRQ feeds the keyboard queue.  A stale 0 here leaves the CPU
+     * refusing to acknowledge devices, which looks like the prompt frozen on
+     * a black screen right after launch. */
     p->ctx.rflags = 0x202;
     p->ctx.cs     = 0x1B;
     p->ctx.ss     = 0x23;

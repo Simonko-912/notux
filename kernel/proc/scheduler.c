@@ -160,6 +160,28 @@ static void arm_kernel_stack(Process *p) {
 static void __attribute__((noreturn)) enter_process(Process *next);
 static void sched_reschedule(CpuState *state);
 
+/* What kind of iretq frame does this interrupt descriptor expect?  Five
+ * words when the CPU crossed a privilege level coming in (its own SS/RSP sit
+ * under RIP), three words otherwise.  Let the frame itself speak: CS of a
+ * ring-3 entry carries RPL=3, anything else means same-CPL delivery. */
+static int frame_five_words(const CpuState *s) {
+    return (s->cs & 3) == 3;
+}
+
+/* Patch the resume target into an existing iretq frame without disturbing
+ * its shape.  Three-word frames (same-CPL entry) genuinely have no RSP/SS
+ * slots; skipping them is what keeps rsp accounting honest for the iretq
+ * that the asm epilogue is about to execute. */
+static void frame_apply(CpuState *dst, const Process *p, int five_words) {
+    dst->rip    = p->ctx.rip;
+    dst->cs     = p->ctx.cs;
+    dst->rflags = p->ctx.rflags & ~(1ULL << 8);      /* never leak TF */
+    if (five_words) {
+        dst->rsp = p->ctx.rsp;
+        dst->ss  = p->ctx.ss;
+    }
+}
+
 /* ── Is this ctx safe to iretq into? ─────────────────────────── */
 static int ctx_sane(const Process *p) {
     uint64_t cs = p->ctx.cs;
@@ -309,13 +331,7 @@ static void sched_reschedule(CpuState *state) {
     if (current_proc->page_table)
         vmm_switch_to_process(current_proc->page_table);
 
-    state->rip    = next->ctx.rip;
-    state->cs     = next->ctx.cs;
-    state->rflags = next->ctx.rflags & ~(1ULL << 8);
-    if ((next->ctx.cs & 3) == 3) {
-        state->rsp = next->ctx.rsp;
-        state->ss  = next->ctx.ss;
-    }
+    frame_apply(state, next, frame_five_words(state));
 }
 
 /* ── Switch into an already-selected process and never come back ──
@@ -394,7 +410,14 @@ void sched_enter_from_exit(void) {
 /* ── Idle loop (entered from kmain after everything is running) ─*/
 __attribute__((noreturn))
 void sched_idle(void) {
-    for (;;) __asm__ volatile("hlt");
+    /* Dispatch passes and the tick wait alternate: each pass picks up a
+     * process queued since the last check, hlt then rests until the next PIT
+     * tick (or keyboard IRQ) wakes the CPU. Re-enabling IF here is deliberate —
+     * the SYSCALL SFMASK mask is still in force when kmain drops into idle. */
+    for (;;) {
+        sched_yield();
+        __asm__ volatile("sti; hlt");
+    }
 }
 
 /* ── Yield (voluntary context switch) ───────────────────────── */

@@ -129,29 +129,29 @@ void tty_got_char(char c) {
      * how typed text behaved before this layer existed. */
     if (next != t->it) { t->in_q[t->ih] = (char)c; t->ih = next; }
 }
+/* Kernel-side equivalent of sti;hlt: re-enable interrupts (SFMASK masked them
+ * on the way in) and park until the next timer/keyboard IRQ. Unlike the
+ * nested-pushfq variety this honours interrupts opened at ANY level, which is
+ * what Linux's idle path effectively relies on. */
+static inline void tty_nap(void) {
+    __asm__ volatile("sti; hlt");
+}
 int64_t tty_read_line(char *buf, size_t n) {
     prepare();
     Console *t = con_at(tty_of_caller());
     size_t i = 0;
-    while (i < n) {
-        /* Drain whatever has arrived, then either hand it straight back or —
-         * only while absolutely nothing has come yet — snooze for one key.
-         * Dwelling in the syscall handler across many wakes invites ticks to
-         * land mid-frame and skew the iretq unwind, so once bytes exist the
-         * call returns promptly and readers just call again. */
-        while (t->it != t->ih && i < n) {
-            unsigned char ch = t->in_q[t->it];
-            t->it = (t->it + 1) % TTY_INQ_SIZE;
-            buf[i++] = (char)ch;
-            if (ch == '\n' || ch == '\r') return (int64_t)i;   /* end of line */
-        }
-        if (i > 0) break;                              /* served what was there */
-        /* Spin briefly (never hlt inside the SYSCALL handler: ticks landing
-         * mid-transition skew the iretq unwind).  Keys queued before or just
-         * after entry are picked up within this loop; a truly idle terminal
-         * returns 0 quickly and the reader simply calls again. */
-        int laps = 2000;
-        while (laps-- > 0 && t->it == t->ih) __asm__ volatile("pause");
+    /* Park between checks so the PIT tick (and with it the keyboard IRQ that
+     * fills this queue) keeps running; a keystroke wakes this within one or
+     * two ticks (~10-20 ms at 100 Hz). The cap only matters on long silences
+     * where callers rediscover their prompt occasionally; while anyone types,
+     * this is effectively a blocking read and bursts drain whole. */
+    int waits = 0;
+    while (t->it == t->ih && waits++ < 50) tty_nap();
+    while (i < n && t->it != t->ih) {
+        unsigned char ch = t->in_q[t->it];
+        t->it = (t->it + 1) % TTY_INQ_SIZE;
+        buf[i++] = (char)ch;
+        if (ch == '\n' || ch == '\r') break;          /* stop at end of line */
     }
     return (int64_t)i;
 }
