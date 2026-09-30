@@ -119,6 +119,7 @@ static void seed_path(void) {
 }
 
 int main(void) {
+    nx_puts("[nsh] in\n");                 /* one-shot boot-progress marker */
     char *cwd = nx_getcwd(g_cwd, sizeof(g_cwd));
     if (!cwd || g_cwd[0] == '\0') nx_strcpy(g_cwd, "#/");
 
